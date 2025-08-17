@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Calculadora de Antena Telescópica – RTL‑SDR</title>
+  <style>
+    :root {
+      --bg: #0f1220;
+      --panel: #171a2b;
+      --text: #e8eaf2;
+      --muted: #a9afc3;
+      --accent: #7aa2ff;
+      --ok: #51d09b;
+      --warn: #ffd66b;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 80% -10%, #1a1f3a 0%, var(--bg) 60%);
+      color: var(--text);
+      padding: 32px; line-height: 1.45;
+    }
+    h1 { font-size: 28px; margin: 0 0 8px; }
+    p.caption { color: var(--muted); margin-top: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .card { background: var(--panel); border-radius: var(--radius); padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03); }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    input, select, button { width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a2e47; background: #0f1326; color: var(--text); outline: none; }
+    input:focus, select:focus { border-color: var(--accent); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn { background: linear-gradient(180deg, #5f7dff, #4772ff); border: none; cursor: pointer; font-weight: 600; }
+    .btn:active { transform: translateY(1px); }
+    .ghost { background: #0f1326; border: 1px dashed #2a2e47; }
+    .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid #2a2e47; background: #121631; color: var(--muted); cursor: pointer; font-size: 12px; }
+    .chip:hover { border-color: var(--accent); color: var(--text); }
+    .result { font-variant-numeric: tabular-nums; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: right; padding: 8px; border-bottom: 1px solid #262b47; }
+    th { text-align: left; color: var(--muted); font-weight: 600; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+    .small { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Calculadora de Longitud de Antena Telescópica (RTL‑SDR)</h1>
+    <p class="caption">Ajusta una varilla telescópica a la longitud eléctrica deseada. Fórmula base: <span class="mono">L = (k · c / f) · fracción</span>.</p>
+  </header>
+
+  <section class="grid">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Frecuencia (MHz)</label>
+          <input id="freq" type="number" step="0.001" min="0.1" value="109.000" />
+        </div>
+        <div>
+          <label>Fracción de onda</label>
+          <select id="fraction">
+            <option value="0.25">1/4 λ — monopolo típico</option>
+            <option value="0.5">1/2 λ</option>
+            <option value="0.625">5/8 λ</option>
+            <option value="1">1 λ</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <div>
+          <label>Factor de acortamiento k (end‑effect)</label>
+          <input id="k" type="number" step="0.001" min="0.5" max="1" value="0.95" />
+        </div>
+        <div>
+          <label>Resultado en</label>
+          <select id="unit">
+            <option value="cm">centímetros</option>
+            <option value="in">pulgadas</option>
+            <option value="mm">milímetros</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <button class="btn" id="calc">Calcular</button>
+      </div>
+
+      <div class="presets">
+        <span class="chip" data-f="27">CB 27</span>
+        <span class="chip" data-f="50">50</span>
+        <span class="chip" data-f="88">FM 88</span>
+        <span class="chip" data-f="98">FM 98</span>
+        <span class="chip" data-f="118">Aviación 118</span>
+        <span class="chip" data-f="144">VHF 144</span>
+        <span class="chip" data-f="162">AIS 162</span>
+        <span class="chip" data-f="315">315</span>
+        <span class="chip" data-f="433">UHF 433</span>
+        <span class="chip" data-f="868">ISM 868</span>
+        <span class="chip" data-f="915">ISM 915</span>
+        <span class="chip" data-f="1090">ADS‑B 1090</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Resultado principal</h3>
+      <div id="primary" class="result" style="font-size:28px; font-weight:700;">—</div>
+      <div class="small">(Longitud física recomendada para tu telescópica)</div>
+      <div id="rangeNote" class="small" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Tabla de longitudes (k aplicado)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Fracción</th>
+            <th>Longitud</th>
+            <th class="mono">λ</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Consejos rápidos</h3>
+      <ul>
+        <li>Para monopolo 1/4 λ usa plano de tierra (p. ej., base magnética o radiales).</li>
+        <li>El factor <span class="mono">k</span>≈0.95 compensa el acortamiento por diámetro y entorno; ajusta entre 0.9–0.98.</li>
+        <li>La sintonía fina real depende de la impedancia del equipo, el entorno y el plano de tierra.</li>
+        <li>Si tu antena tiene segmentos, aproximar la suma de segmentos al total calculado.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    Fórmula: <span class="mono">L(m) = (k · 299.792458 / f(MHz)) · fracción</span>. Esta herramienta no sustituye una medición de ROE/SWR.
+  </footer>
+
+  <script>
+    const c_m_per_MHz = 299.792458; // (c in m/us) -> convenient constant: meters per MHz for full wavelength
+
+    const $ = (q) => document.querySelector(q);
+    const freq = $('#freq');
+    const fraction = $('#fraction');
+    const k = $('#k');
+    const unit = $('#unit');
+    const primary = $('#primary');
+    const rows = $('#rows');
+    const rangeNote = $('#rangeNote');
+
+    const FRACTIONS = [
+      { name: '1/4 λ', value: 0.25 },
+      { name: '1/2 λ', value: 0.5 },
+      { name: '5/8 λ', value: 0.625 },
+      { name: '1 λ', value: 1 },
+    ];
+
+    function toUnit(meters, u) {
+      switch (u) {
+        case 'cm': return meters * 100;
+        case 'mm': return meters * 1000;
+        case 'in': return meters * 39.37007874;
+        default: return meters;
+      }
+    }
+
+    function fmt(num, u) {
+      const n = Number(num);
+      if (!isFinite(n)) return '—';
+      const precision = u === 'mm' ? 1 : 2;
+      return n.toLocaleString('es-ES', { maximumFractionDigits: precision, minimumFractionDigits: precision });
+    }
+
+    function wavelengthMeters(fMHz) {
+      return c_m_per_MHz / fMHz;
+    }
+
+    function lengthMeters(fMHz, frac, kVal) {
+      return wavelengthMeters(fMHz) * frac * kVal;
+    }
+
+    function compute() {
+      const f = parseFloat(freq.value);
+      const frac = parseFloat(fraction.value);
+      const kVal = parseFloat(k.value);
+      const u = unit.value;
+      if (!f || f <= 0) return;
+
+      // Primary result
+      const Lm = lengthMeters(f, frac, kVal);
+      primary.textContent = `${fmt(toUnit(Lm, u), u)} ${u}`;
+
+      // Range hint for common RTL-SDR telescópicas (aprox 20–120 cm)
+      const Lcm = toUnit(Lm, 'cm');
+      if (Lcm >= 20 && Lcm <= 120) {
+        rangeNote.innerHTML = `<span class="ok">✔</span> Dentro del rango típico de una telescópica (20–120 cm).`;
+      } else {
+        rangeNote.innerHTML = `<span class="warn">⚠</span> Fuera del rango típico de telescópicas comerciales (20–120 cm).`;
+      }
+
+      // Table
+      rows.innerHTML = '';
+      FRACTIONS.forEach(fr => {
+        const m = lengthMeters(f, fr.value, kVal);
+        const out = fmt(toUnit(m, u), u);
+        const wl = fmt(wavelengthMeters(f) * fr.value, 'm');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fr.name}</td><td>${out} ${u}</td><td class="mono">${fmt(wavelengthMeters(f), 'm')} m · ${fr.name}</td>`;
+        rows.appendChild(tr);
+      });
+    }
+
+    document.getElementById('calc').addEventListener('click', compute);
+    document.querySelectorAll('.chip').forEach(ch => ch.addEventListener('click', () => { freq.value = ch.dataset.f; compute(); }));
+    ['change','input'].forEach(evt => {
+      [freq, fraction, k, unit].forEach(el => el.addEventListener(evt, compute));
+    });
+
+    // initial
+    compute();
+  </script>
+</body>
+</html>
